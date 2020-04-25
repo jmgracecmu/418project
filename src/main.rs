@@ -64,8 +64,9 @@ fn make_agents(num_agents: usize) -> Vec<AgentState> {
 }
 
 
-fn update_pos(agent: usize, states: &mut Vec<AgentState>) -> bool {
-    let max_pos = 3;
+fn update_pos(agent: usize, states: &mut Vec<AgentState>,
+              num_agents : isize) -> bool {
+    let max_pos = num_agents - 1;
 
     println!("update pos agent {}", agent);
 
@@ -75,6 +76,7 @@ fn update_pos(agent: usize, states: &mut Vec<AgentState>) -> bool {
     // a Nogood to the predecessor. 
     if states[agent].pos[agent] > max_pos {
         states[agent].pos[agent] = 0;
+        println!("too big from finding Nogood earlier");
         println!("return agent {}, pos {}", agent, states[agent].pos[agent]);
         return false;
     }
@@ -105,8 +107,8 @@ fn update_pos(agent: usize, states: &mut Vec<AgentState>) -> bool {
 
 
 // returns true found a consistent assignment
-fn run_agent(agent: usize, states: &mut Vec<AgentState>) -> bool {
-    let num_agents = 4;
+fn run_agent(agent: usize, states: &mut Vec<AgentState>,
+             num_agents: isize) -> bool {
     println!("run_agent agent {}", agent);
 
     // first update the local view from the ok messages queue.
@@ -124,33 +126,26 @@ fn run_agent(agent: usize, states: &mut Vec<AgentState>) -> bool {
         }
     }
 
-
     // then look to see if the current agent has a consistent assignment.
     // if not, send a Nogood. If so, check to make sure that it's not ruled
     // out by a Nogood.
-    if false == update_pos(agent, states) {
-        // must send no good to lowest affected member
-        // I think that in the queens problem it will always be the immediate
-        // predecessor
-        // also assume that the lowest affected member changes its position
-        // we don't know what it gets changed to, but remove it as a conflict
-        let imm_pred = ((agent as isize) - 1) as usize;
+    let mut backtrack_depth = 0;
+    while false == update_pos(agent, states, num_agents) {
+        backtrack_depth = backtrack_depth + 1;
+        let pred = ((agent as isize) - backtrack_depth) as usize;
 
         //send Nogood
-        let nogood = states[agent].pos[0..agent].to_vec();
-        states[imm_pred].no_goods.push(nogood);
+        let nogood = states[agent].pos[0..(pred + 1)].to_vec();
+        states[pred].no_goods.push(nogood);
         println!("nogood");
 
+        states[agent].pos[agent] = 0;
+
         // erase agent's belief about its predecessor's position
-        states[agent].pos[imm_pred] = -1;
-        if false == update_pos(agent, states) {
-            panic!("failed to get working position");
-        }
-        // if you send a Nogood, you don't send an ok message
-        return false;
+        states[agent].pos[pred] = -1;
+
     }
-
-
+    if backtrack_depth > 0 {return false;}
 
     // Now that a consistent assignment has been found, check to see if it's
     // ruled out by a Nogood.
@@ -161,7 +156,7 @@ fn run_agent(agent: usize, states: &mut Vec<AgentState>) -> bool {
                 if eq_part_ass(&no_good, &states[agent].pos) {
                     println!("found outruling nogood");
                     states[agent].pos[agent] = states[agent].pos[agent] + 1;
-                    return run_agent(agent, states);
+                    return run_agent(agent, states, num_agents);
                 },
         }
     }
@@ -170,7 +165,7 @@ fn run_agent(agent: usize, states: &mut Vec<AgentState>) -> bool {
     // if the consistent assignment is not ruled out by a Nogood, then you
     // should send ok messages to the other agents
     println!("bdcsting updated state");
-    for succ in (agent + 1)..num_agents {
+    for succ in (agent + 1)..(num_agents as usize) {
         let new_pos = states[agent].pos[agent];
         states[succ].oks.push((agent, new_pos));
     }
@@ -180,16 +175,16 @@ fn run_agent(agent: usize, states: &mut Vec<AgentState>) -> bool {
 
 
 fn main() {
-    let num_agents = 4;
-    let mut states = make_agents(num_agents);
+    let num_agents : isize = 8;
+    let mut states = make_agents(num_agents as usize);
     let mut found_cons;
-    for _ in 0..10 {
+    for _ in 0..100 {
         found_cons = true;
         println!();
         println!();
-        for j in 0..4 {
+        for j in 0..(num_agents as usize) {
             println!();
-            found_cons = run_agent(j, &mut states) & found_cons;
+            found_cons = run_agent(j, &mut states, num_agents) & found_cons;
         }
         if found_cons == true {break;}
     }
