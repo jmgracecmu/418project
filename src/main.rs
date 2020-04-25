@@ -68,7 +68,6 @@ fn update_pos(agent: usize, states: &mut Vec<AgentState>,
               num_agents : isize) -> bool {
     let max_pos = num_agents - 1;
 
-    println!("update pos agent {}", agent);
 
     // must check for it being too big here because when we found that a Nogood
     // prevented an otherwise acceptable state, we increment a position,
@@ -76,8 +75,6 @@ fn update_pos(agent: usize, states: &mut Vec<AgentState>,
     // a Nogood to the predecessor. 
     if states[agent].pos[agent] > max_pos {
         states[agent].pos[agent] = 0;
-        println!("too big from finding Nogood earlier");
-        println!("return agent {}, pos {}", agent, states[agent].pos[agent]);
         return false;
     }
 
@@ -97,11 +94,9 @@ fn update_pos(agent: usize, states: &mut Vec<AgentState>,
     }
     if false == found_flag {
         states[agent].pos[agent] = 0;
-        println!("return agent {}, pos {}", agent, states[agent].pos[agent]);
         return false;
     }
 
-    println!("return agent {}, pos {}", agent, states[agent].pos[agent]);
     true
 }
 
@@ -109,7 +104,6 @@ fn update_pos(agent: usize, states: &mut Vec<AgentState>,
 // returns true found a consistent assignment
 fn run_agent(agent: usize, states: &mut Vec<AgentState>,
              num_agents: isize) -> bool {
-    println!("run_agent agent {}", agent);
 
     // first update the local view from the ok messages queue.
     // in this sequential version, they're already updated.
@@ -137,7 +131,6 @@ fn run_agent(agent: usize, states: &mut Vec<AgentState>,
         //send Nogood
         let nogood = states[agent].pos[0..(pred + 1)].to_vec();
         states[pred].no_goods.push(nogood);
-        println!("nogood");
 
         states[agent].pos[agent] = 0;
 
@@ -154,7 +147,6 @@ fn run_agent(agent: usize, states: &mut Vec<AgentState>,
             None => break,
             Some(no_good) =>
                 if eq_part_ass(&no_good, &states[agent].pos) {
-                    println!("found outruling nogood");
                     states[agent].pos[agent] = states[agent].pos[agent] + 1;
                     return run_agent(agent, states, num_agents);
                 },
@@ -164,7 +156,6 @@ fn run_agent(agent: usize, states: &mut Vec<AgentState>,
 
     // if the consistent assignment is not ruled out by a Nogood, then you
     // should send ok messages to the other agents
-    println!("bdcsting updated state");
     for succ in (agent + 1)..(num_agents as usize) {
         let new_pos = states[agent].pos[agent];
         states[succ].oks.push((agent, new_pos));
@@ -175,17 +166,29 @@ fn run_agent(agent: usize, states: &mut Vec<AgentState>,
 
 
 fn main() {
-    let num_agents : isize = 8;
-    let mut states = make_agents(num_agents as usize);
-    let mut found_cons;
-    for _ in 0..100 {
-        found_cons = true;
-        println!();
-        println!();
-        for j in 0..(num_agents as usize) {
-            println!();
-            found_cons = run_agent(j, &mut states, num_agents) & found_cons;
+    for i in 4..12 {
+        let num_agents = i as isize;
+        let mut states = make_agents(num_agents as usize);
+        let mut found_cons;
+        for _ in 0..100 {
+            found_cons = true;
+            for j in 0..(num_agents as usize) {
+                found_cons = run_agent(j, &mut states, num_agents)
+                                && found_cons;
+            }
+            if found_cons == true {
+                println!("{:?}", states[i - 1].pos);
+                for ii in 0..i {
+                    for _ in 0..states[i-1].pos[ii] {print!("-");}
+                    print!("1");
+                    for _ in (states[i-1].pos[ii] + 1)..num_agents {
+                        print!("-");
+                    }
+                    println!();
+                }
+                println!();
+                break;
+            }
         }
-        if found_cons == true {break;}
     }
 }
