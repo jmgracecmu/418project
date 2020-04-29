@@ -1,5 +1,5 @@
 use std::{cmp, thread};
-use std::sync::mpsc;
+use std::sync::{mpsc, Arc, Barrier};
 use std::ops::{Index, IndexMut};
 
 #[derive(Clone, Debug, Copy)]
@@ -8,22 +8,13 @@ enum Position {
     Col(usize),
 }
 
-impl Position {
-    fn as_isize(self) -> isize {
-        match self {
-            Position::Unass => -1,
-            Position::Col(col) => col as isize,
-        }
-    }
-}
-
 #[derive(Debug)]
 enum Board {
     Board(Vec<Position>),
 }
 
 impl Board {
-    fn len(self) -> usize {
+    fn len(&self) -> usize {
         match self {
             Board::Board(pos_vec) => pos_vec.len(),
         }
@@ -43,9 +34,9 @@ impl IndexMut<usize> for Board {
 impl Index<usize> for Board {
     type Output = Position;
 
-    fn index(& self, i: usize) -> Self::Output {
+    fn index(& self, i: usize) -> &Self::Output {
         match self {
-            Board::Board(pos_vec) => pos_vec[i],
+            Board::Board(pos_vec) => &pos_vec[i],
         }
     }
 }
@@ -54,17 +45,19 @@ impl Index<usize> for Board {
 
 // a message can hold either an update position or a Nogood
 enum Message {
-    Empty,
+    Idle(usize),
     Ok(usize, Position),
-    Nogood(Board),
+    Nogood(usize, Board),
 }
 
 type ID = usize;
 
 struct AgentState {
+    id: usize,
     pos: Board,
     no_goods: Vec<Board>,
     txs: Vec<mpsc::Sender<Message>>,
+    rx: mpsc::Receiver<Message>,
 }
     
 //checks for consistent queen placement
@@ -100,16 +93,20 @@ fn eq_part_ass(pa1: &Board, pa2: &Board) -> bool {
     return true;
 }
 
-fn make_agents(num_agents: usize, txs: &Vec::<mpsc::Sender<Message>>)
-                    -> Vec<AgentState> {
+fn make_agents(num_agents: usize) -> Vec<AgentState> {
     let mut agents: Vec<AgentState> = vec![];
+    let (mut txs, mut rxs) = make_channels(num_agents);
     for i in 0..num_agents {
-        let agent = AgentState {
-            pos: Board::Board(vec![Position::Col(0); num_agents]),
-            no_goods: vec![],
-            txs: txs.clone(),
+        if let Some(rx) = rxs.pop() {
+            let agent = AgentState {
+                id: i,
+                pos: Board::Board(vec![Position::Col(0); num_agents]),
+                no_goods: vec![],
+                txs: txs.clone(),
+                rx: rx,
+            };
+            agents.push(agent);
         };
-        agents.push(agent);
     }
     agents
 }
@@ -161,8 +158,7 @@ fn update_pos(agent: ID, state: &mut AgentState, num_agents : usize) -> bool {
 // successor's nogood from last round, because we have already received
 // the messages and updated the preds' positions and the succ's nogood.
 
-fn run_agent(agent: usize, state: &mut AgentState,
-             num_agents: usize) -> bool {
+fn run_agent(agent: usize, state: &mut AgentState, num_agents: usize) -> bool {
 
     // As noted above, we have received and process the ok messages.
     // the new nogoods are in the vector for later consideration.
@@ -175,12 +171,13 @@ fn run_agent(agent: usize, state: &mut AgentState,
         let pred = agent - backtrack_depth;
 
         //send Nogood
-        let nogood = match state.pos {
+        let nogood = match &state.pos {
             Board::Board(pos_vec) => pos_vec[0..(pred + 1)].to_vec(),
         };
         // this needs to be a tx
         // used to be states[pred].no_goods.push(nogood);
-        state.txs[pred].send(Message::Nogood(Board::Board(nogood)));
+        state.txs[pred].send(Message::Nogood(agent, Board::Board(nogood)));
+        println!("{:?} send to {:?}", agent, pred);
 
         state.pos[agent] = Position::Col(0);
 
@@ -188,13 +185,20 @@ fn run_agent(agent: usize, state: &mut AgentState,
         state.pos[pred] = Position::Unass;
 
     }
-    if backtrack_depth > 0 {return false;}
+    if backtrack_depth > 0 {
+        for i in 0..num_agents {
+            if agent - backtrack_depth <= i && i < agent {continue;}
+            println!("{:?} send to {:?}", agent, i);
+            state.txs[i].send(Message::Idle(agent));
+        }
+        return false;
+    }
 
     // Now that a consistent assignment has been found, check to see if it's
     // ruled out by a Nogood.
-    for nogood in state.no_goods {
+    for nogood in &state.no_goods {
         if eq_part_ass(&nogood, &state.pos) {
-            let mut col: usize = 0;
+            let col: usize;
             if let Position::Col(_col) = state.pos[agent] {
                 col = _col;
             } else {unreachable!();}
@@ -206,20 +210,32 @@ fn run_agent(agent: usize, state: &mut AgentState,
 
     // if the consistent assignment is not ruled out by a Nogood, then you
     // should send ok messages to the other agents
+    send_oks(agent, state, num_agents);
+
+    return true;
+}
+
+fn send_oks(agent: usize, state: &AgentState, num_agents: usize) {
+    for pred in 0..(agent + 1) {
+        println!("{:?} send to {:?}", agent, pred);
+        state.txs[pred].send(Message::Idle(agent));
+    }
     for succ in (agent + 1)..num_agents {
+        println!("{:?} send to {:?}", agent, succ);
         let pos = state.pos[agent];
         // pos is automatically cloned here. but it's possible I'm trying
         // to move out of a vector. maybe it's cloned above as well
         state.txs[succ].send(Message::Ok(agent, pos));
     }
-    return true;
+
 }
+
 
 
 fn make_channels(num_agents : usize)
         -> (Vec::<mpsc::Sender<Message>>, Vec::<mpsc::Receiver<Message>>) {
-    let txs = Vec::< mpsc::Sender<Message> >::new();
-    let rxs = Vec::< mpsc::Receiver<Message> >::new();
+    let mut txs = Vec::< mpsc::Sender<Message> >::new();
+    let mut rxs = Vec::< mpsc::Receiver<Message> >::new();
     for _ in 0..num_agents {
         let (tx, rx) = mpsc::channel();
         txs.push(tx);
@@ -244,21 +260,23 @@ fn print_board(state : AgentState, num_agents : usize) {
 } 
 
 // receive messages. Updates local view and puts nogoods in the vector
-fn receive_messages(i: usize, num_agents: usize, state: &mut AgentState,
-                        rx: mpsc::Receiver<Message>) -> bool {
-    let idle = true;
+fn receive_messages(i: usize, num_agents: usize, state: &mut AgentState)
+                            -> bool {
+    let mut idle = true;
     for agentid in 0..num_agents {
-        if i == agentid {continue;}
-        let _ = match rx.recv().unwrap() {
-            Idle => (),
-            Message::Ok(agent_id, pos) => {
+        println!("agent {:?} waiting on message {:?}", i, agentid);
+        let _ = match state.rx.recv().unwrap() {
+            Message::Idle(sender) => println!("{:?} recv from {:?}", i, sender),
+            Message::Ok(sender, pos) => {
                 idle = false;
-                state.pos[agent_id] = pos;
+                state.pos[sender] = pos;
+                println!("{:?} recv from {:?}", i, sender);
                 ()
             },
-            Message::Nogood(nogood) => {
+            Message::Nogood(sender, nogood) => {
                 idle = false;
                 state.no_goods.push(nogood);
+                println!("{:?} recv from {:?}", i, sender);
                 ()
             },
         };
@@ -269,30 +287,43 @@ fn receive_messages(i: usize, num_agents: usize, state: &mut AgentState,
 
 
 fn main() {
-    let num_agents = 8 as usize;
-    let (txs, rxs) = make_channels(num_agents);
-    let mut states = make_agents(num_agents as usize, &txs);
+    let num_agents = 4 as usize;
+    let mut states = make_agents(num_agents);
 
     let mut handles = vec![];
-    let mut state: AgentState;
-    for i in 0..num_agents {
+    let barrier = Arc::new(Barrier::new(num_agents));
+    let barrier1 = Arc::new(Barrier::new(num_agents));
+    for _ in 0..num_agents {
+        let c = barrier.clone();
+        let c1 = barrier1.clone();
         let _ = match states.pop() {
             None => (),
-            Some(s) => {state = s; ()},
-        };
-        let handle = thread::spawn(move || {
-            loop {
-                // synchronously wait for messages from every other agent
-                let idle = receive_messages(i, num_agents, &mut state, rxs[i]);
+            Some(mut state) => {
+                let handle = thread::spawn(move || {
+                    let mut idle = true;
+                    let i = state.id;
+                    loop {
+                        c.wait();
+                        println!("agent {:?}", state.id); 
+                        // run the agent, including asynchronously
+                        //sending messages to every other agent
+                        idle = idle && run_agent(i, &mut state, num_agents);
 
-                // run the agent, including asynchronously sending messages to 
-                // every other agent
-                idle = idle && run_agent(i, &mut state, num_agents);
-                if idle {break;}
-            }
-        });
-        
-        handles.push(handle);
+                        c1.wait();
+                        // synchronously wait for messages from every 
+                        //other agent
+                        idle = receive_messages(i, num_agents, &mut state);
+                        if idle {
+                            println!("agent {:?} idle", i);
+                        }
+
+
+                    }
+                });
+                handles.push(handle);
+                ()
+            },
+        };
     }
 
     // here I think you have to join and determine when to cut the agents off
