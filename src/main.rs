@@ -336,48 +336,59 @@ fn send_messages(state: &mut AgentState) {
 
 fn main() {
     let num_agents = 12 as usize;
+    let num_threads = 8 as usize;
+    let agents_per_thread = num_agents / num_threads;
+    let mut remainder = num_agents % num_threads;
     let mut states = make_agents(num_agents);
 
     let mut handles = vec![];
-    let barrier = Arc::new(Barrier::new(num_agents));
-    let barrier1 = Arc::new(Barrier::new(num_agents));
-    for _ in 0..num_agents {
+    let barrier = Arc::new(Barrier::new(num_threads));
+    let barrier1 = Arc::new(Barrier::new(num_threads));
+    for _ in 0..num_threads {
+        let mut local_states = states;
+        if remainder > 0 {
+            remainder -= 1;
+            states = local_states.split_off(agents_per_thread + 1);
+        } else {
+            states = local_states.split_off(agents_per_thread);
+        }
         let c = barrier.clone();
         let c1 = barrier1.clone();
-        let _ = match states.pop() {
-            None => (),
-            Some(mut state) => {
-                let handle = thread::spawn(move || {
-                    let mut idle = false;
-                    loop {
-                       c.wait();
-                        // run the agent, including asynchronously
-                        //sending messages to every other agent
-                        idle = run_agent(&mut state, num_agents) && idle;
-                        send_messages(&mut state);
+        let handle = thread::spawn(move || {
+            let mut idle = false;
+            loop {
+                // run the agent, including asynchronously
+                //sending messages to every other agent
+                for mut state in &mut local_states {
+                    idle = run_agent(&mut state, num_agents) && idle;
+                    send_messages(&mut state);
+                }
 
-                        idle = true;
+                idle = true;
 
 
-                        c1.wait();
-                        // synchronously wait for messages from every 
-                        //other agent
-                        idle = receive_messages(num_agents, &mut state) && idle;
+                c1.wait();
+                // synchronously wait for messages from every 
+                //other agent
+                for mut state in &mut local_states {
+                
+                    idle = receive_messages(num_agents, &mut state)
+                        && idle;
+                }
 
-                        if idle {
-                            break;
-                        }
+                if idle {
+                    break;
+                }
 
 
-                    }
-                    if state.id == num_agents - 1 {
-                        print_board(&state, num_agents)
-                    }
-                });
-                handles.push(handle);
-                ()
-            },
-        };
+            }
+            for state in local_states {
+                if state.id == num_agents - 1 {
+                    print_board(&state, num_agents)
+                }
+            }
+        });
+        handles.push(handle);
     }
 
     // here I think you have to join and determine when to cut the agents off

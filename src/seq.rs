@@ -1,4 +1,5 @@
 use std::cmp;
+use std::time::Instant;
 
 
 type Pos = isize;
@@ -163,32 +164,37 @@ fn run_agent(agent: usize, states: &mut Vec<AgentState>,
     return true;
 }
 
+fn print_board(state: &AgentState, num_agents: isize) {
+    let i = num_agents as usize;
+    println!("{:?}", state.pos);
+    for ii in 0..i {
+        for _ in 0..state.pos[ii] {print!("-");}
+        print!("1");
+        for _ in (state.pos[ii] + 1)..num_agents {
+            print!("-");
+        }
+        println!();
+    }
+    println!();
 
+}
 
 fn main() {
-    for i in 4..12 {
-        let num_agents = i as isize;
-        let mut states = make_agents(num_agents as usize);
-        let mut found_cons;
-        for _ in 0..100 {
-            found_cons = true;
-            for j in 0..(num_agents as usize) {
-                found_cons = run_agent(j, &mut states, num_agents)
-                                && found_cons;
-            }
-            if found_cons == true {
-                println!("{:?}", states[i - 1].pos);
-                for ii in 0..i {
-                    for _ in 0..states[i-1].pos[ii] {print!("-");}
-                    print!("1");
-                    for _ in (states[i-1].pos[ii] + 1)..num_agents {
-                        print!("-");
-                    }
-                    println!();
-                }
-                println!();
-                break;
-            }
+    let now = Instant::now();
+    let num_agents = 22 as isize;
+    let mut states = make_agents(num_agents as usize);
+    let mut found_cons;
+    for _ in 0..100000000 {
+        found_cons = true;
+        for j in 0..(num_agents as usize) {
+            found_cons = run_agent(j, &mut states, num_agents)
+                            && found_cons;
+        }
+        if found_cons == true {
+            let i = num_agents as usize;
+            print_board(&states[i - 1], num_agents);
+            break;
         }
     }
+    println!("{}", now.elapsed().as_micros());
 }
