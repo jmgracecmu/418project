@@ -1,7 +1,6 @@
-use std::{cmp, thread};
+use std::{env, cmp, thread};
 use std::sync::{mpsc, Arc, Barrier};
 use std::ops::{Index, IndexMut};
-use std::mem;
 use std::fmt;
 use std::time::Instant;
 use std::collections::VecDeque;
@@ -383,9 +382,18 @@ fn send_messages(state: &mut AgentState) {
 
 
 fn main() {
+    let mut num_agents: usize = 0;
+    let mut num_threads: usize = 0;
+    let args: Vec<String> = env::args().collect();
+    for i in 1..args.len() {
+        if args[i] == "-t" {
+            num_threads = args[i + 1].parse::<usize>().unwrap();
+        }
+        if args[i] == "-a" {
+            num_agents = args[i + 1].parse::<usize>().unwrap();
+        }
+    }
     let now = Instant::now();
-    let num_agents = 15 as usize;
-    let num_threads = 8 as usize;
     let agents_per_thread = num_agents / num_threads;
     let mut remainder = num_agents % num_threads;
     let mut states = make_agents(num_agents);
