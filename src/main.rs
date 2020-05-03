@@ -121,7 +121,7 @@ fn eq_part_ass(nogood: &Board, curr_board: &Board) -> bool {
 
 fn make_agents(num_agents: usize) -> Vec<AgentState> {
     let mut agents: Vec<AgentState> = vec![];
-    let (mut txs, mut rxs) = make_channels(num_agents);
+    let (txs, mut rxs) = make_channels(num_agents);
     for i in 0..num_agents {
         if let Some(rx) = rxs.pop() {
             let agent = AgentState {
@@ -284,7 +284,6 @@ fn run_agent(state: &mut AgentState, num_agents: usize) -> bool {
 }
 
 fn send_oks(state: &mut AgentState, num_agents: usize) {
-    use Message::{Empty, Ok, Nogood};
     for succ in (state.id + 1)..num_agents {
         let pos = state.pos[state.id];
         // pos is automatically cloned here. but it's possible I'm trying
@@ -329,8 +328,6 @@ fn print_board(state : &AgentState, num_agents : usize) {
 // returns idle iff it receives idle from every other agent
 fn recv_messages(num_agents: usize, state: &mut AgentState) -> Message {
     use Message::{Empty, Ok, Nogood, Break};
-    let mut num_messages_recv = state.id + 1;
-    if num_messages_recv == num_agents {num_messages_recv -= 1;}
     
     // every agent needs to receive a Break message to return true
     // except the last agent, which needs to receive no messages to return true
@@ -400,7 +397,6 @@ fn main() {
 
     let mut handles = vec![];
     let barrier = Arc::new(Barrier::new(num_threads));
-    let barrier1 = Arc::new(Barrier::new(num_threads));
     
     for _ in 0..num_threads {
         let mut local_states = states;
@@ -412,9 +408,8 @@ fn main() {
         }
 
         let c = barrier.clone();
-        let c1 = barrier1.clone();
         let handle = thread::spawn(move || {
-            let mut recv_ret = Message::Empty(0);
+            let mut recv_ret: Message;
             let mut break_flag = false;
             loop {
                 //send messages
