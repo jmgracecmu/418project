@@ -343,16 +343,13 @@ fn recv_messages(num_agents: usize, state: &mut AgentState) -> Message {
                 unreachable!();
             },
             Message::Empty(sender) => {
-                println!("{} recv {:?}", state.id, Empty(sender));
                 ret = Empty(sender);
             },
             Message::Break(sender, end_cycle) => {
-                println!("{} recv {:?}", state.id, Break(sender, end_cycle));
                 ret = Break(sender, end_cycle);
                 state.end_cycle = end_cycle;
             },
             Message::Ok(sender, pos) => {
-                println!("{} recv {:?}", state.id, Ok(sender, pos));
                 if state.pos[sender] != pos {
                     state.pos[state.id] = Position::Col(0);
                     for succ in (state.id + 1)..num_agents {
@@ -366,7 +363,6 @@ fn recv_messages(num_agents: usize, state: &mut AgentState) -> Message {
                 ()
             },
             Message::Nogood(sender, nogood) => {
-                println!("{} recv {:?}", state.id, Nogood(sender, nogood.clone()));
                 state.no_goods.push(nogood);
                 ret = Nogood(sender, Board::Board(vec![]));
                 ()
@@ -380,7 +376,6 @@ fn recv_messages(num_agents: usize, state: &mut AgentState) -> Message {
 
 fn send_messages(state: &mut AgentState) {
     while let Some((dest,mess)) = state.mess2send.pop_front() {
-        println!("{} sends {:?}", state.id, mess);
         state.txs[dest].send(mess).unwrap();
     }
 
@@ -416,9 +411,7 @@ fn main() {
             loop {
                 //send messages
                 for mut state in &mut local_states {
-                    //println!("b {} pos {:?}", state.id, state.pos[state.id]);
                     run_agent(&mut state, num_agents);
-                    //println!("a {} pos {:?}", state.id, state.pos[state.id]);
                     send_messages(&mut state);
 
                 }
@@ -426,9 +419,7 @@ fn main() {
                 // the barrier must be betweeen sending and receiving
                 // to ensure that all messages get
                 // sent before we poll for a variable number of messages
-                println!("before wait {}\n", local_states[0].id);
                 c.wait();
-                println!("after wait {}\n", local_states[0].id);
 
                 // recv
                 for mut state in &mut local_states {
@@ -447,7 +438,6 @@ fn main() {
                     let state = &mut local_states[i];
                     if state.id == num_agents -1
                         && state.cycles_with_no_comms > 10 {
-                        println!("sending break messages");
                         for i in 0..num_agents {
                             state.txs[i].send(
                                 Message::Break(state.id, state.cycles + 1)).unwrap();
