@@ -1,4 +1,4 @@
-use std::{cmp, thread};
+use std::{env, cmp, thread};
 use std::sync::{mpsc, Arc, Barrier};
 use std::ops::{Index, IndexMut};
 use std::mem;
