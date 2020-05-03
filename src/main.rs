@@ -335,8 +335,18 @@ fn send_messages(state: &mut AgentState) {
 
 
 fn main() {
-    let num_agents = 12 as usize;
-    let num_threads = 8 as usize;
+    let mut num_agents: usize = 0;
+    let mut num_threads: usize = 0;
+    let args: Vec<String> = env::args().collect();
+    for i in 1..args.len() {
+        if args[i] == "-t" {
+            num_threads = args[i + 1].parse::<usize>().unwrap();
+        }
+        if args[i] == "-a" {
+            num_agents = args[i + 1].parse::<usize>().unwrap();
+        }
+    }
+
     let agents_per_thread = num_agents / num_threads;
     let mut remainder = num_agents % num_threads;
     let mut states = make_agents(num_agents);
