@@ -1,4 +1,4 @@
-use std::cmp;
+use std::{env, cmp};
 use std::time::Instant;
 
 
@@ -8,10 +8,8 @@ type Nogood = Board;
 
 
 struct AgentState {
-    id: usize,
     pos: Board,
     no_goods: Vec<Nogood>,
-    new_no_goods: Vec<Nogood>,
     oks: Vec<(usize,isize)>,
 }
     
@@ -51,12 +49,10 @@ fn eq_part_ass(pa1: &Board, pa2: &Board) -> bool {
 
 fn make_agents(num_agents: usize) -> Vec<AgentState> {
     let mut agents: Vec<AgentState> = vec![];
-    for i in 0..num_agents {
+    for _ in 0..num_agents {
         let agent = AgentState {
-            id: i,
             pos: vec![0; num_agents],
             no_goods: vec![],
-            new_no_goods: vec![],
             oks: vec![],
         };
         agents.push(agent);
@@ -182,7 +178,7 @@ fn print_board(state: &AgentState, num_agents: isize) {
 fn main() {
 
     let mut num_agents: isize = 0;
-    let mut num_threads: usize = 0;
+    let mut num_threads: usize;
     let args: Vec<String> = env::args().collect();
     for i in 1..args.len() {
         if args[i] == "-t" {
