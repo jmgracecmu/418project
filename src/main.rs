@@ -2,6 +2,9 @@ use std::{cmp, thread};
 use std::sync::{mpsc, Arc, Barrier};
 use std::ops::{Index, IndexMut};
 use std::mem;
+use std::fmt;
+use std::time::Instant;
+use std::collections::VecDeque;
 
 #[derive(Clone, Debug, Copy, PartialEq)]
 enum Position {
@@ -9,7 +12,7 @@ enum Position {
     Col(usize),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 enum Board {
     Board(Vec<Position>),
 }
@@ -20,7 +23,9 @@ impl Board {
             Board::Board(pos_vec) => pos_vec.len(),
         }
     }
+    
 }
+
 
 impl IndexMut<usize> for Board {
     fn index_mut(&mut self, i: usize) -> &mut Position {
@@ -45,10 +50,11 @@ impl Index<usize> for Board {
 
 
 // a message can hold either an update position or a Nogood
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 enum Message {
     Empty(usize),
-    Idle(usize),
+    RecvNone,
+    Break(usize, usize),
     Ok(usize, Position),
     Nogood(usize, Board),
 }
@@ -58,12 +64,23 @@ type ID = usize;
 struct AgentState {
     id: usize,
     pos: Board,
+    cycles: usize,
+    end_cycle: usize,
+    cycles_with_no_comms: usize,
     no_goods: Vec<Board>,
     txs: Vec<mpsc::Sender<Message>>,
     rx: mpsc::Receiver<Message>,
-    mess2send: Vec<Message>,
+    mess2send: VecDeque<(usize, Message)>,
 }
-    
+
+impl fmt::Debug for AgentState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("AgentState")
+        .field("id", &self.id)
+        .finish()
+    }
+}
+ 
 //checks for consistent queen placement
 fn consistent(ar: ID, ac: Position, br: ID, bc: Position) -> bool {
 
@@ -111,10 +128,13 @@ fn make_agents(num_agents: usize) -> Vec<AgentState> {
             let agent = AgentState {
                 id: i,
                 pos: Board::Board(vec![Position::Col(0); num_agents]),
+                cycles: 0,
+                end_cycle: (-1isize) as usize,
+                cycles_with_no_comms: 0,
                 no_goods: vec![],
                 txs: txs.clone(),
                 rx: rx,
-                mess2send: vec![Message::Empty(i); num_agents],
+                mess2send: VecDeque::new(),
             };
             agents.push(agent);
         };
@@ -175,7 +195,9 @@ fn update_pos(state: &mut AgentState, num_agents: usize) -> bool {
         };
         // this needs to be a tx
         // used to be states[pred].no_goods.push(nogood);
-        state.mess2send[pred] = Message::Nogood(state.id, Board::Board(nogood));
+        state.mess2send.push_back(
+            (pred, Message::Nogood(state.id, Board::Board(nogood)))
+        );
         
         /* used to be
         state.txs[pred].send(Message::Nogood(state.id, Board::Board(nogood))).unwrap();
@@ -190,7 +212,9 @@ fn update_pos(state: &mut AgentState, num_agents: usize) -> bool {
         for i in 0..num_agents {
             if state.id - backtrack_depth <= i && i < state.id {continue;}
             // state.txs[i].send(Message::Empty(state.id)).unwrap();
-            state.mess2send[i] = Message::Empty(state.id);
+            state.mess2send.push_back(
+                (i, Message::Empty(state.id))
+            );
         }
         return false;
     }
@@ -208,7 +232,24 @@ fn run_agent_rec(state: &mut AgentState, num_agents: usize) -> bool {
 
     // Now that a consistent assignment has been found, check to see if it's
     // ruled out by a Nogood.
-    for nogood in &state.no_goods {
+    while state.no_goods.len() > 0 {
+        match state.no_goods.pop() {
+            None => break,
+            Some(nogood) => {
+                if eq_part_ass(&nogood, &state.pos) {
+                    let col: usize;
+                    if let Position::Col(_col) = state.pos[state.id] {
+                        col = _col;
+                    } else {unreachable!();}
+                    state.pos[state.id] = Position::Col(col + 1);
+                    return run_agent_rec(state, num_agents);
+                }
+            },
+        }
+
+    }
+/*
+    for nogood in state.no_goods {
         if eq_part_ass(&nogood, &state.pos) {
             let col: usize;
             if let Position::Col(_col) = state.pos[state.id] {
@@ -218,6 +259,7 @@ fn run_agent_rec(state: &mut AgentState, num_agents: usize) -> bool {
             return run_agent_rec(state, num_agents);
         }
     }
+*/
     true
 }
 
@@ -243,17 +285,13 @@ fn run_agent(state: &mut AgentState, num_agents: usize) -> bool {
 }
 
 fn send_oks(state: &mut AgentState, num_agents: usize) {
-    use Message::{Empty, Idle, Ok, Nogood};
-    for pred in 0..(state.id + 1) {
-        //state.txs[pred].send(Message::Empty(state.id)).unwrap();
-        state.mess2send[pred] = Message::Empty(state.id);
-    }
+    use Message::{Empty, Ok, Nogood};
     for succ in (state.id + 1)..num_agents {
         let pos = state.pos[state.id];
         // pos is automatically cloned here. but it's possible I'm trying
         // to move out of a vector. maybe it's cloned above as well
         //state.txs[succ].send(Message::Ok(state.id, pos)).unwrap();
-        state.mess2send[succ] = Message::Ok(state.id, pos);
+        state.mess2send.push_back((succ, Message::Ok(state.id,pos)));
     }
 
 }
@@ -290,52 +328,68 @@ fn print_board(state : &AgentState, num_agents : usize) {
 
 // receive messages. Updates local view and puts nogoods in the vector
 // returns idle iff it receives idle from every other agent
-fn receive_messages(num_agents: usize, state: &mut AgentState) -> bool {
-    use Message::{Empty, Idle, Ok, Nogood};
-    let mut idle = true;
-    for i in 0..num_agents {
-        let _ = match state.rx.recv().unwrap() {
-            Message::Idle(sender) => {
+fn recv_messages(num_agents: usize, state: &mut AgentState) -> Message {
+    use Message::{Empty, Ok, Nogood, Break};
+    let mut num_messages_recv = state.id + 1;
+    if num_messages_recv == num_agents {num_messages_recv -= 1;}
+    
+    // every agent needs to receive a Break message to return true
+    // except the last agent, which needs to receive no messages to return true
+    let mut ret = Message::RecvNone;
+    let mut mess_iter = state.rx.try_iter();
+    while let Some(mess) = mess_iter.next() {
+        match mess {
+            Message::RecvNone => {
+                unreachable!();
             },
             Message::Empty(sender) => {
-                idle = false;
+                println!("{} recv {:?}", state.id, Empty(sender));
+                ret = Empty(sender);
+            },
+            Message::Break(sender, end_cycle) => {
+                println!("{} recv {:?}", state.id, Break(sender, end_cycle));
+                ret = Break(sender, end_cycle);
+                state.end_cycle = end_cycle;
             },
             Message::Ok(sender, pos) => {
-                idle = false;
+                println!("{} recv {:?}", state.id, Ok(sender, pos));
                 if state.pos[sender] != pos {
                     state.pos[state.id] = Position::Col(0);
                     for succ in (state.id + 1)..num_agents {
-                        state.mess2send[succ] = 
-                            Message::Ok(state.id, Position::Col(0));
+                        state.mess2send.push_back(
+                            (succ, Message::Ok(state.id, Position::Col(0)))
+                        );
                     }
                 }
                 state.pos[sender] = pos;
+                ret = Ok(sender, pos);
                 ()
             },
             Message::Nogood(sender, nogood) => {
-                idle = false;
+                println!("{} recv {:?}", state.id, Nogood(sender, nogood.clone()));
                 state.no_goods.push(nogood);
+                ret = Nogood(sender, Board::Board(vec![]));
                 ()
             },
         };
     }
-    idle
+    ret
 }
 
 
 
 fn send_messages(state: &mut AgentState) {
-    let mut mess = Message::Idle(state.id);
-    for i in 0..state.mess2send.len() {
-        mem::swap(&mut state.mess2send[i], &mut mess);
-        state.txs[i].send(mess).unwrap();
-        mess = Message::Idle(state.id);
+    while let Some((dest,mess)) = state.mess2send.pop_front() {
+        println!("{} sends {:?}", state.id, mess);
+        state.txs[dest].send(mess).unwrap();
     }
+
 }
 
 
 fn main() {
-    let num_agents = 12 as usize;
+    let now = Instant::now();
+    let num_agents = 15 as usize;
     let num_threads = 8 as usize;
     let agents_per_thread = num_agents / num_threads;
     let mut remainder = num_agents % num_threads;
@@ -344,6 +398,7 @@ fn main() {
     let mut handles = vec![];
     let barrier = Arc::new(Barrier::new(num_threads));
     let barrier1 = Arc::new(Barrier::new(num_threads));
+    
     for _ in 0..num_threads {
         let mut local_states = states;
         if remainder > 0 {
@@ -352,35 +407,56 @@ fn main() {
         } else {
             states = local_states.split_off(agents_per_thread);
         }
+
         let c = barrier.clone();
         let c1 = barrier1.clone();
         let handle = thread::spawn(move || {
-            let mut idle = false;
+            let mut recv_ret = Message::Empty(0);
+            let mut break_flag = false;
             loop {
-                // run the agent, including asynchronously
-                //sending messages to every other agent
+                //send messages
                 for mut state in &mut local_states {
-                    idle = run_agent(&mut state, num_agents) && idle;
+                    //println!("b {} pos {:?}", state.id, state.pos[state.id]);
+                    run_agent(&mut state, num_agents);
+                    //println!("a {} pos {:?}", state.id, state.pos[state.id]);
                     send_messages(&mut state);
+
                 }
 
-                idle = true;
+                // the barrier must be betweeen sending and receiving
+                // to ensure that all messages get
+                // sent before we poll for a variable number of messages
+                println!("before wait {}\n", local_states[0].id);
+                c.wait();
+                println!("after wait {}\n", local_states[0].id);
 
-
-                c1.wait();
-                // synchronously wait for messages from every 
-                //other agent
+                // recv
                 for mut state in &mut local_states {
-                
-                    idle = receive_messages(num_agents, &mut state)
-                        && idle;
+                    recv_ret = recv_messages(num_agents, &mut state);
+                    if recv_ret == Message::RecvNone {
+                        state.cycles_with_no_comms += 1;
+                    } else {
+                        state.cycles_with_no_comms = 0;
+                    }
+                    if state.cycles == state.end_cycle {break_flag = true;}
+                    state.cycles += 1;
+                }
+                if break_flag {break;}
+                {
+                    let i = local_states.len() - 1;
+                    let state = &mut local_states[i];
+                    if state.id == num_agents -1
+                        && state.cycles_with_no_comms > 10 {
+                        println!("sending break messages");
+                        for i in 0..num_agents {
+                            state.txs[i].send(
+                                Message::Break(state.id, state.cycles + 1)).unwrap();
+                        }
+                    }
                 }
 
-                if idle {
-                    break;
-                }
-
-
+                // the only way to receive an idle message is if the last 
+                // agent didn't move and has found a solution.
             }
             for state in local_states {
                 if state.id == num_agents - 1 {
@@ -391,9 +467,10 @@ fn main() {
         handles.push(handle);
     }
 
-    // here I think you have to join and determine when to cut the agents off
+    // join
     for handle in handles {
         handle.join().unwrap();
     }
+    println!("{:?}", now.elapsed().as_micros());
 
 }
