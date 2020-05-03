@@ -180,8 +180,20 @@ fn print_board(state: &AgentState, num_agents: isize) {
 }
 
 fn main() {
+
+    let mut num_agents: isize = 0;
+    let mut num_threads: usize = 0;
+    let args: Vec<String> = env::args().collect();
+    for i in 1..args.len() {
+        if args[i] == "-t" {
+            num_threads = args[i + 1].parse::<usize>().unwrap();
+        }
+        if args[i] == "-a" {
+            num_agents = args[i + 1].parse::<isize>().unwrap();
+        }
+    }
+
     let now = Instant::now();
-    let num_agents = 8 as isize;
     let mut states = make_agents(num_agents as usize);
     let mut found_cons;
     for _ in 0..100000000 {
