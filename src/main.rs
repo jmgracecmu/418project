@@ -423,7 +423,7 @@ fn main() {
                 // to ensure that all messages get
                 // sent before we poll for a variable number of messages
                 c.wait();
-
+                
                 // recv
                 for mut state in &mut local_states {
                     recv_ret = recv_messages(num_agents, &mut state);
