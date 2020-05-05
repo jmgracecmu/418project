@@ -176,7 +176,7 @@ fn print_board(state: &AgentState, num_agents: isize) {
 }
 
 fn main() {
-
+    println!("running seq"):
     let mut num_agents: isize = 0;
     let mut num_threads: usize;
     let args: Vec<String> = env::args().collect();
