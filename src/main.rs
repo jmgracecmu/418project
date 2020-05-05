@@ -4,6 +4,8 @@ use std::ops::{Index, IndexMut};
 use std::fmt;
 use std::time::Instant;
 use std::collections::VecDeque;
+use rand::thread_rng;
+use rand::seq::SliceRandom;
 
 #[derive(Clone, Debug, Copy, PartialEq)]
 enum Position {
@@ -70,6 +72,8 @@ struct AgentState {
     txs: Vec<mpsc::Sender<Message>>,
     rx: mpsc::Receiver<Message>,
     mess2send: VecDeque<(usize, Message)>,
+    pos_seq: Vec<Position>,
+    col_i: usize,
 }
 
 impl fmt::Debug for AgentState {
@@ -121,8 +125,17 @@ fn eq_part_ass(nogood: &Board, curr_board: &Board) -> bool {
 
 fn make_agents(num_agents: usize) -> Vec<AgentState> {
     let mut agents: Vec<AgentState> = vec![];
+
+    let mut pos_vec = vec![];
+    let mut rng = rand::thread_rng();
+    for i in 0..num_agents {pos_vec.push(i);}
+
     let (txs, mut rxs) = make_channels(num_agents);
     for i in 0..num_agents {
+        pos_vec.shuffle(&mut rng);
+        let pos_seq = vec![];
+        for j in 0..pos_vec.len() {pos_seq.push(Position::Col(pos_vec[j]));}
+        let pos_seq
         if let Some(rx) = rxs.pop() {
             let agent = AgentState {
                 id: i,
@@ -134,6 +147,8 @@ fn make_agents(num_agents: usize) -> Vec<AgentState> {
                 txs: txs.clone(),
                 rx: rx,
                 mess2send: VecDeque::new(),
+                pos_seq: pos_seq,
+                col_i: 0,
             };
             agents.push(agent);
         };
@@ -149,32 +164,31 @@ fn try_to_inc_pos(state: &mut AgentState, num_agents : usize) -> bool {
     // prevented an otherwise acceptable state, we increment a position,
     // and it could possibly go out of bounds. If we do, we want to send
     // a Nogood to the predecessor. 
-    if let Position::Col(col) = state.pos[state.id] {
-        if col > max_pos {
-            state.pos[state.id] = Position::Col(0);
-            return false;
-        }
+    if state.col_1 > max_pos {
+        state.pos[state.id] = state.pos_seq[0];
+        state.col_i = 0;
+        return false;
     }
 
     let mut start = 0;
-    if let Position::Col(col) = state.pos[state.id] {
-        start = col;
-    }
+    start = state.col_i;
     let mut found_flag = true;
-    for col in start..(max_pos + 1) {
+    for col_i in start..(max_pos + 1) {
         found_flag = true;
         // this loop checks to make sure it works with all predecessors
         for i in 0..state.id {
             found_flag = consistent(i, state.pos[i], state.id,
-                                                Position::Col(col));
+                                                state.pos_seq[col_i]);
             if false == found_flag {break;}
         }
         if false == found_flag {continue;}
-        state.pos[state.id] = Position::Col(col);
+        state.pos[state.id] = state.pos_seq[col_i];
+        state.col_i = col_i;
         break;
     }
     if false == found_flag {
-        state.pos[state.id] = Position::Col(0);
+        state.pos[state.id] = state.pos_seq[0];
+        state.col_i = 0;
         return false;
     }
 
@@ -182,7 +196,7 @@ fn try_to_inc_pos(state: &mut AgentState, num_agents : usize) -> bool {
 }
 
 
-fn update_pos(state: &mut AgentState, num_agents: usize) -> bool {
+fn update_pos(state: &mut AgentState, num_agents:usize) -> bool {
     let mut backtrack_depth = 0;
     while false == try_to_inc_pos(state, num_agents) {
         backtrack_depth = backtrack_depth + 1;
@@ -201,7 +215,8 @@ fn update_pos(state: &mut AgentState, num_agents: usize) -> bool {
         /* used to be
         state.txs[pred].send(Message::Nogood(state.id, Board::Board(nogood))).unwrap();
         */
-        state.pos[state.id] = Position::Col(0);
+        state.pos[state.id] = state.pos_seq[0];
+        state.col_i = 0;
 
         // erase agent's belief about its predecessor's position
         state.pos[pred] = Position::Unass;
@@ -236,11 +251,12 @@ fn run_agent_rec(state: &mut AgentState, num_agents: usize) -> bool {
             None => break,
             Some(nogood) => {
                 if eq_part_ass(&nogood, &state.pos) {
-                    let col: usize;
-                    if let Position::Col(_col) = state.pos[state.id] {
-                        col = _col;
-                    } else {unreachable!();}
-                    state.pos[state.id] = Position::Col(col + 1);
+                    state.col_i += 1;
+                    // if it's too big, it will guaranteed to be fixed later
+                    // in try_to_inc
+                    if state.col_i < num_agents {
+                        state.pos[state.id] = state.pos_seq[state.col_i];
+                    }
                     return run_agent_rec(state, num_agents);
                 }
             },
@@ -347,7 +363,8 @@ fn recv_messages(num_agents: usize, state: &mut AgentState) -> Message {
             },
             Message::Ok(sender, pos) => {
                 if state.pos[sender] != pos {
-                    state.pos[state.id] = Position::Col(0);
+                    state.pos[state.id] = state.pos_seq[0];
+                    state.col_i = 0;
                     for succ in (state.id + 1)..num_agents {
                         state.mess2send.push_back(
                             (succ, Message::Ok(state.id, Position::Col(0)))
