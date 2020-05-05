@@ -133,9 +133,8 @@ fn make_agents(num_agents: usize) -> Vec<AgentState> {
     let (txs, mut rxs) = make_channels(num_agents);
     for i in 0..num_agents {
         pos_vec.shuffle(&mut rng);
-        let pos_seq = vec![];
+        let mut pos_seq = vec![];
         for j in 0..pos_vec.len() {pos_seq.push(Position::Col(pos_vec[j]));}
-        let pos_seq
         if let Some(rx) = rxs.pop() {
             let agent = AgentState {
                 id: i,
@@ -164,7 +163,7 @@ fn try_to_inc_pos(state: &mut AgentState, num_agents : usize) -> bool {
     // prevented an otherwise acceptable state, we increment a position,
     // and it could possibly go out of bounds. If we do, we want to send
     // a Nogood to the predecessor. 
-    if state.col_1 > max_pos {
+    if state.col_i > max_pos {
         state.pos[state.id] = state.pos_seq[0];
         state.col_i = 0;
         return false;
