@@ -473,6 +473,7 @@ fn main() {
             }
             for state in local_states {
                 if state.id == num_agents - 1 {
+                    println!("{:?}", &state.pos);
                     if validate(&state.pos) {
                         println!("valid");
                     } else {println!("invalid");}
