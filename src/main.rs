@@ -1,6 +1,7 @@
 use std::{env, cmp};
 use std::time::Instant;
-use rand::thread_rng;
+use rand::{Rng, SeedableRng};
+use rand::rngs::StdRng;
 use rand::seq::SliceRandom;
 
 type Pos = isize;
@@ -53,7 +54,9 @@ fn eq_part_ass(pa1: &Board, pa2: &Board) -> bool {
 fn make_agents(num_agents: usize) -> Vec<AgentState> {
     let mut agents: Vec<AgentState> = vec![];
     let mut pos_vec = vec![];
-    let mut rng = rand::thread_rng();
+    let seed = [1; 32];
+    let mut rng: StdRng = SeedableRng::from_seed(seed);
+
     for i in 0..(num_agents as isize){pos_vec.push(i);}
 
     for _ in 0..num_agents {
