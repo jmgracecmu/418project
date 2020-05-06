@@ -455,13 +455,13 @@ fn spawn_thread(c: std::sync::Arc<Barrier>, mut local_states: Vec<AgentState>,
             // the only way to receive an idle message is if the last 
             // agent didn't move and has found a solution.
         }
-        println!("thread {}: work {}, wait {}", threadno, elapsed_work, elapsed_wait);
+        //println!("thread {}: work {}, wait {}", threadno, elapsed_work, elapsed_wait);
         for state in local_states {
             if state.id == num_agents - 1 {
-                println!("{:?}", &state.pos);
+                //println!("{:?}", &state.pos);
                 if validate(&state.pos) {
-                    println!("valid");
-                } else {println!("invalid");}
+                    //println!("valid");
+                } else {/*println!("invalid");*/}
     
             }
         }
@@ -470,7 +470,7 @@ fn spawn_thread(c: std::sync::Arc<Barrier>, mut local_states: Vec<AgentState>,
 
 
 fn main() {
-    println!("timing/diff decomp");
+    //println!("timing/diff decomp");
     let mut num_agents: usize = 0;
     let mut num_threads: usize = 0;
     let args: Vec<String> = env::args().collect();
@@ -503,7 +503,7 @@ fn main() {
     for handle in handles {
         handle.join().unwrap();
     }
-    println!("{:?}", now.elapsed().as_micros());
+    println!("{:?},", now.elapsed().as_micros());
 }
 
 
