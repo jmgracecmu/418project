@@ -470,7 +470,11 @@ fn main() {
             }
             for state in local_states {
                 if state.id == num_agents - 1 {
-                    print_board(&state, num_agents)
+                    print_board(&state, num_agents);
+                    if validate(&state.pos) {
+                        println!("valid");
+                    } else {println!("invalid");}
+
                 }
             }
         });
@@ -482,23 +486,21 @@ fn main() {
         handle.join().unwrap();
     }
     println!("{:?}", now.elapsed().as_micros());
-    if validate(&states[num_agents - 1]) {println!("valid"):}
-    else {println!("invalid");}
 }
 
 
 fn validate(board: &Board) -> bool {
     for i in 0..(board.len() - 1) {
-        for j in 1..board.len() {
+        for j in (i + 1)..board.len() {
             let diff = j - i;
             let coli: usize;
             let colj: usize;
             if let Position::Col(_coli) = board[i] {
                 coli = _coli;
-            }
-            if let Position::Col(_colj) = board[i] {
+            } else {unreachable!();}
+            if let Position::Col(_colj) = board[j] {
                 colj = _colj;
-            }
+            } else {unreachable!();}
             if coli == colj {return false;}
             if coli == colj + diff {return false;}
             if coli + diff == colj {return false;}
