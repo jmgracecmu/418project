@@ -470,7 +470,7 @@ fn spawn_thread(c: std::sync::Arc<Barrier>, mut local_states: Vec<AgentState>,
 
 
 fn main() {
-    println!("timing/diff decomp");
+    //println!("timing/diff decomp");
     let mut num_agents: usize = 0;
     let mut num_threads: usize = 0;
     let args: Vec<String> = env::args().collect();
