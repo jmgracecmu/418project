@@ -240,6 +240,7 @@ fn main() {
         }
         if found_cons == true {
             let i = num_agents as usize;
+            println!("{:?}", &states[i - 1].pos);
             break;
         }
     }
