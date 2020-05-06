@@ -1,6 +1,7 @@
 use std::{env, cmp};
 use std::time::Instant;
-
+use rand::thread_rng;
+use rand::seq::SliceRandom;
 
 type Pos = isize;
 type Board = Vec<Pos>;
@@ -11,6 +12,8 @@ struct AgentState {
     pos: Board,
     no_goods: Vec<Nogood>,
     oks: Vec<(usize,isize)>,
+    pos_seq: Vec<isize>,
+    col_i: usize,
 }
     
 //checks for consistent queen placement
@@ -49,11 +52,21 @@ fn eq_part_ass(pa1: &Board, pa2: &Board) -> bool {
 
 fn make_agents(num_agents: usize) -> Vec<AgentState> {
     let mut agents: Vec<AgentState> = vec![];
+    let mut pos_vec = vec![];
+    let mut rng = rand::thread_rng();
+    for i in 0..(num_agents as isize){pos_vec.push(i);}
+
     for _ in 0..num_agents {
+        pos_vec.shuffle(&mut rng);
+        let mut pos_seq = vec![];
+        for j in 0..pos_vec.len() {pos_seq.push(pos_vec[j]);}
+
         let agent = AgentState {
             pos: vec![0; num_agents],
             no_goods: vec![],
             oks: vec![],
+            pos_seq: pos_seq,
+            col_i: 0,
         };
         agents.push(agent);
     }
@@ -70,27 +83,31 @@ fn update_pos(agent: usize, states: &mut Vec<AgentState>,
     // prevented an otherwise acceptable state, we increment a position,
     // and it could possibly go out of bounds. If we do, we want to send
     // a Nogood to the predecessor. 
-    if states[agent].pos[agent] > max_pos {
-        states[agent].pos[agent] = 0;
+    if states[agent].col_i > max_pos as usize{
+        states[agent].pos[agent] = states[agent].pos_seq[0];
+        states[agent].col_i = 0;
         return false;
     }
 
-    let start = states[agent].pos[agent];
+    let start = states[agent].col_i;
     let mut found_flag = true;
-    for pos in start..(max_pos + 1) {
+    for col_i in start..(max_pos as usize + 1) {
         found_flag = true;
         for i in 0..agent {
-            if false == consistent(i, states[agent].pos[i], agent, pos) {
+            if false == consistent(i, states[agent].pos[i], agent,
+                                        states[agent].pos_seq[col_i]) {
                 found_flag = false;
                 break;
             }
         }
         if false == found_flag {continue;}
-        states[agent].pos[agent] = pos;
+        states[agent].pos[agent] = states[agent].pos_seq[col_i];
+        states[agent].col_i = col_i;
         break;
     }
     if false == found_flag {
-        states[agent].pos[agent] = 0;
+        states[agent].pos[agent] = states[agent].pos_seq[0];
+        states[agent].col_i = 0;
         return false;
     }
 
@@ -110,7 +127,8 @@ fn run_agent(agent: usize, states: &mut Vec<AgentState>,
             Some(update) => {
                 if states[agent].pos[update.0] != update.1 {
                     
-                    states[agent].pos[agent] = 0;
+                    states[agent].pos[agent] = states[agent].pos_seq[0];
+                    states[agent].col_i = 0;
                     states[agent].pos[update.0] = update.1;
                 }
             },
@@ -129,7 +147,8 @@ fn run_agent(agent: usize, states: &mut Vec<AgentState>,
         let nogood = states[agent].pos[0..(pred + 1)].to_vec();
         states[pred].no_goods.push(nogood);
 
-        states[agent].pos[agent] = 0;
+        states[agent].pos[agent] = states[agent].pos_seq[0];
+        states[agent].col_i = 0;
 
         // erase agent's belief about its predecessor's position
         states[agent].pos[pred] = -1;
@@ -144,7 +163,13 @@ fn run_agent(agent: usize, states: &mut Vec<AgentState>,
             None => break,
             Some(no_good) =>
                 if eq_part_ass(&no_good, &states[agent].pos) {
-                    states[agent].pos[agent] = states[agent].pos[agent] + 1;
+                    states[agent].col_i += 1;
+                    //if it's too big, this will be fixed in update_pos
+                    if states[agent].col_i < num_agents as usize {
+                        
+                        states[agent].pos[agent] =
+                            states[agent].pos_seq[states[agent].col_i];
+                    }
                     return run_agent(agent, states, num_agents);
                 },
         }
@@ -164,10 +189,10 @@ fn print_board(state: &AgentState, num_agents: isize) {
     let i = num_agents as usize;
     println!("{:?}", state.pos);
     for ii in 0..i {
-        for _ in 0..state.pos[ii] {print!("-");}
-        print!("1");
+        for _ in 0..state.pos[ii] {print!("- ");}
+        print!("1 ");
         for _ in (state.pos[ii] + 1)..num_agents {
-            print!("-");
+            print!("- ");
         }
         println!();
     }
