@@ -335,6 +335,7 @@ fn send_messages(state: &mut AgentState) {
 
 
 fn main() {
+    println!("running threads v agents");
     let mut num_agents: usize = 0;
     let mut num_threads: usize = 0;
     let args: Vec<String> = env::args().collect();
