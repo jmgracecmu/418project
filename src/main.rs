@@ -418,7 +418,7 @@ fn main() {
     let mut handles = vec![];
     let barrier = Arc::new(Barrier::new(num_threads));
     
-    for _ in 0..num_threads {
+    for threadno in 0..num_threads {
         let mut local_states = states;
         if remainder > 0 {
             remainder -= 1;
@@ -434,6 +434,8 @@ fn main() {
             let mut elapsed_work = 0u128;
             let mut elapsed_wait = 0u128;
             let mut thread_now = Instant::now();
+            let mut last_wait_end = 0u128;
+            let mut last_work_end = 0u128;
             loop {
                 //send messages
                 for mut state in &mut local_states {
@@ -445,11 +447,11 @@ fn main() {
                 // the barrier must be betweeen sending and receiving
                 // to ensure that all messages get
                 // sent before we poll for a variable number of messages
-                elapsed_work += thread_now.elapsed().as_micros();
-                thread_now = Instant::now();
+                last_work_end = thread_now.elapsed().as_millis();
+                elapsed_work += last_work_end - last_wait_end;
                 c.wait();
-                elapsed_wait += thread_now.elapsed().as_micros();
-                thread_now = Instant::now();
+                last_wait_end = thread_now.elapsed().as_millis();
+                elapsed_wait += last_wait_end - last_work_end;
 
                 // recv
                 for mut state in &mut local_states {
@@ -478,7 +480,7 @@ fn main() {
                 // the only way to receive an idle message is if the last 
                 // agent didn't move and has found a solution.
             }
-            println!("work {}, wait {}", elapsed_work, elapsed_wait);
+            println!("thread {}: work {}, wait {}", threadno, elapsed_work, elapsed_wait);
             for state in local_states {
                 if state.id == num_agents - 1 {
                     println!("{:?}", &state.pos);
