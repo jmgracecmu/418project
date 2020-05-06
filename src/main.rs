@@ -1,4 +1,5 @@
 use std::{env, cmp, thread};
+use std::thread::JoinHandle;
 use std::sync::{mpsc, Arc, Barrier};
 use std::ops::{Index, IndexMut};
 use std::fmt;
@@ -124,8 +125,9 @@ fn eq_part_ass(nogood: &Board, curr_board: &Board) -> bool {
     return true;
 }
 
-fn make_agents(num_agents: usize) -> Vec<AgentState> {
-    let mut agents: Vec<AgentState> = vec![];
+fn make_agents(num_agents: usize, threads: usize) -> Vec<Vec<AgentState>> {
+    let mut agent_vec: Vec<Vec<AgentState>> = vec![];
+    for _ in 0..threads {agent_vec.push(vec![]);}
 
     let mut pos_vec = vec![];
     let seed = [1; 32];
@@ -152,10 +154,10 @@ fn make_agents(num_agents: usize) -> Vec<AgentState> {
                 pos_seq: pos_seq,
                 col_i: 0,
             };
-            agents.push(agent);
+            agent_vec[i % threads].push(agent);
         };
     }
-    agents
+    agent_vec
 }
 
 
@@ -397,6 +399,76 @@ fn send_messages(state: &mut AgentState) {
 }
 
 
+
+
+fn spawn_thread(c: std::sync::Arc<Barrier>, mut local_states: Vec<AgentState>,
+                    threadno: usize, num_agents: usize) -> JoinHandle<()> {
+    return thread::spawn(move || {
+        let mut recv_ret: Message;
+        let mut break_flag = false;
+        let mut elapsed_work = 0u128;
+        let mut elapsed_wait = 0u128;
+        let mut thread_now = Instant::now();
+        let mut last_wait_end = 0u128;
+        let mut last_work_end = 0u128;
+        loop {
+            //send messages
+            for mut state in &mut local_states {
+                run_agent(&mut state, num_agents);
+                send_messages(&mut state);
+    
+            }
+    
+            // the barrier must be betweeen sending and receiving
+            // to ensure that all messages get
+            // sent before we poll for a variable number of messages
+            last_work_end = thread_now.elapsed().as_millis();
+            elapsed_work += last_work_end - last_wait_end;
+            c.wait();
+            last_wait_end = thread_now.elapsed().as_millis();
+            elapsed_wait += last_wait_end - last_work_end;
+    
+            // recv
+            for mut state in &mut local_states {
+                recv_ret = recv_messages(num_agents, &mut state);
+                if recv_ret == Message::RecvNone {
+                    state.cycles_with_no_comms += 1;
+                } else {
+                    state.cycles_with_no_comms = 0;
+                }
+                if state.cycles == state.end_cycle {break_flag = true;}
+                state.cycles += 1;
+            }
+            if break_flag {break;}
+            {
+                let i = local_states.len() - 1;
+                let state = &mut local_states[i];
+                if state.id == num_agents -1
+                    && state.cycles_with_no_comms > 10 {
+                    for i in 0..num_agents {
+                        state.txs[i].send(
+                            Message::Break(state.id, state.cycles + 1)).unwrap();
+                    }
+                }
+            }
+    
+            // the only way to receive an idle message is if the last 
+            // agent didn't move and has found a solution.
+        }
+        println!("thread {}: work {}, wait {}", threadno, elapsed_work, elapsed_wait);
+        for state in local_states {
+            if state.id == num_agents - 1 {
+                println!("{:?}", &state.pos);
+                if validate(&state.pos) {
+                    println!("valid");
+                } else {println!("invalid");}
+    
+            }
+        }
+    });
+}
+
+
 fn main() {
     println!("timing/diff decomp");
     let mut num_agents: usize = 0;
@@ -411,87 +483,20 @@ fn main() {
         }
     }
     let now = Instant::now();
-    let agents_per_thread = num_agents / num_threads;
-    let mut remainder = num_agents % num_threads;
-    let mut states = make_agents(num_agents);
+    let mut states = make_agents(num_agents, num_threads);
 
     let mut handles = vec![];
     let barrier = Arc::new(Barrier::new(num_threads));
     
     for threadno in 0..num_threads {
-        let mut local_states = states;
-        if remainder > 0 {
-            remainder -= 1;
-            states = local_states.split_off(agents_per_thread + 1);
-        } else {
-            states = local_states.split_off(agents_per_thread);
-        }
-
-        let c = barrier.clone();
-        let handle = thread::spawn(move || {
-            let mut recv_ret: Message;
-            let mut break_flag = false;
-            let mut elapsed_work = 0u128;
-            let mut elapsed_wait = 0u128;
-            let mut thread_now = Instant::now();
-            let mut last_wait_end = 0u128;
-            let mut last_work_end = 0u128;
-            loop {
-                //send messages
-                for mut state in &mut local_states {
-                    run_agent(&mut state, num_agents);
-                    send_messages(&mut state);
-
-                }
-
-                // the barrier must be betweeen sending and receiving
-                // to ensure that all messages get
-                // sent before we poll for a variable number of messages
-                last_work_end = thread_now.elapsed().as_millis();
-                elapsed_work += last_work_end - last_wait_end;
-                c.wait();
-                last_wait_end = thread_now.elapsed().as_millis();
-                elapsed_wait += last_wait_end - last_work_end;
-
-                // recv
-                for mut state in &mut local_states {
-                    recv_ret = recv_messages(num_agents, &mut state);
-                    if recv_ret == Message::RecvNone {
-                        state.cycles_with_no_comms += 1;
-                    } else {
-                        state.cycles_with_no_comms = 0;
-                    }
-                    if state.cycles == state.end_cycle {break_flag = true;}
-                    state.cycles += 1;
-                }
-                if break_flag {break;}
-                {
-                    let i = local_states.len() - 1;
-                    let state = &mut local_states[i];
-                    if state.id == num_agents -1
-                        && state.cycles_with_no_comms > 10 {
-                        for i in 0..num_agents {
-                            state.txs[i].send(
-                                Message::Break(state.id, state.cycles + 1)).unwrap();
-                        }
-                    }
-                }
-
-                // the only way to receive an idle message is if the last 
-                // agent didn't move and has found a solution.
+        let _ = match states.pop() {
+            None => (),
+            Some(local_states) => {
+                let c = barrier.clone();
+                let handle = spawn_thread(c, local_states, threadno, num_agents);
+                handles.push(handle);
             }
-            println!("thread {}: work {}, wait {}", threadno, elapsed_work, elapsed_wait);
-            for state in local_states {
-                if state.id == num_agents - 1 {
-                    println!("{:?}", &state.pos);
-                    if validate(&state.pos) {
-                        println!("valid");
-                    } else {println!("invalid");}
-
-                }
-            }
-        });
-        handles.push(handle);
+        };
     }
 
     // join
