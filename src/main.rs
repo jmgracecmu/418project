@@ -398,7 +398,7 @@ fn send_messages(state: &mut AgentState) {
 
 
 fn main() {
-    println!("running random");
+    println!("timing/diff decomp");
     let mut num_agents: usize = 0;
     let mut num_threads: usize = 0;
     let args: Vec<String> = env::args().collect();
@@ -431,6 +431,9 @@ fn main() {
         let handle = thread::spawn(move || {
             let mut recv_ret: Message;
             let mut break_flag = false;
+            let mut elapsed_work = 0u128;
+            let mut elapsed_wait = 0u128;
+            let mut thread_now = Instant::now();
             loop {
                 //send messages
                 for mut state in &mut local_states {
@@ -442,8 +445,12 @@ fn main() {
                 // the barrier must be betweeen sending and receiving
                 // to ensure that all messages get
                 // sent before we poll for a variable number of messages
+                elapsed_work += thread_now.elapsed().as_micros();
+                thread_now = Instant::now();
                 c.wait();
-                
+                elapsed_wait += thread_now.elapsed().as_micros();
+                thread_now = Instant::now();
+
                 // recv
                 for mut state in &mut local_states {
                     recv_ret = recv_messages(num_agents, &mut state);
@@ -471,6 +478,7 @@ fn main() {
                 // the only way to receive an idle message is if the last 
                 // agent didn't move and has found a solution.
             }
+            println!("work {}, wait {}", elapsed_work, elapsed_wait);
             for state in local_states {
                 if state.id == num_agents - 1 {
                     println!("{:?}", &state.pos);
