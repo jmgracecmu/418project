@@ -4,7 +4,8 @@ use std::ops::{Index, IndexMut};
 use std::fmt;
 use std::time::Instant;
 use std::collections::VecDeque;
-use rand::thread_rng;
+use rand::{Rng, SeedableRng};
+use rand::rngs::StdRng;
 use rand::seq::SliceRandom;
 
 #[derive(Clone, Debug, Copy, PartialEq)]
@@ -127,7 +128,9 @@ fn make_agents(num_agents: usize) -> Vec<AgentState> {
     let mut agents: Vec<AgentState> = vec![];
 
     let mut pos_vec = vec![];
-    let mut rng = rand::thread_rng();
+    let seed = [1; 32];
+    let mut rng: StdRng = SeedableRng::from_seed(seed);
+
     for i in 0..num_agents {pos_vec.push(i);}
 
     let (txs, mut rxs) = make_channels(num_agents);
