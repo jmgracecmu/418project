@@ -240,7 +240,6 @@ fn main() {
         }
         if found_cons == true {
             let i = num_agents as usize;
-            print_board(&states[i - 1], num_agents);
             break;
         }
     }
