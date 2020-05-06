@@ -482,5 +482,27 @@ fn main() {
         handle.join().unwrap();
     }
     println!("{:?}", now.elapsed().as_micros());
+    if validate(&states[num_agents - 1]) {println!("valid"):}
+    else {println!("invalid");}
+}
 
+
+fn validate(board: &Board) -> bool {
+    for i in 0..(board.len() - 1) {
+        for j in 1..board.len() {
+            let diff = j - i;
+            let coli: usize;
+            let colj: usize;
+            if let Position::Col(_coli) = board[i] {
+                coli = _coli;
+            }
+            if let Position::Col(_colj) = board[i] {
+                colj = _colj;
+            }
+            if coli == colj {return false;}
+            if coli == colj + diff {return false;}
+            if coli + diff == colj {return false;}
+        }
+    }
+    true
 }
