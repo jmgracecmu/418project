@@ -366,7 +366,7 @@ fn recv_messages(num_agents: usize, state: &mut AgentState) -> Message {
                     state.col_i = 0;
                     for succ in (state.id + 1)..num_agents {
                         state.mess2send.push_back(
-                            (succ, Message::Ok(state.id, Position::Col(0)))
+                            (succ, Message::Ok(state.id, state.pos[state.id]))
                         );
                     }
                 }
