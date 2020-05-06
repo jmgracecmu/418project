@@ -330,9 +330,9 @@ fn print_board(state : &AgentState, num_agents : usize) {
     println!("{:?}", state.pos);
     for ii in 0..i {
         if let Position::Col(col) = state.pos[ii] {
-            for _ in 0..col {print!("-");}
-            print!("1");
-            for _ in (col + 1)..num_agents {print!("-");}
+            for _ in 0..col {print!("- ");}
+            print!("1 ");
+            for _ in (col + 1)..num_agents {print!("- ");}
         }
         println!();
     }
