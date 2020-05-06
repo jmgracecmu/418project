@@ -2,6 +2,7 @@ use std::{env, cmp, thread};
 use std::sync::{mpsc, Arc, Barrier};
 use std::ops::{Index, IndexMut};
 use std::mem;
+use std::time::Instant;
 
 #[derive(Clone, Debug, Copy, PartialEq)]
 enum Position {
@@ -352,6 +353,7 @@ fn main() {
     let mut remainder = num_agents % num_threads;
     let mut states = make_agents(num_agents);
 
+    let now = Instant::now();
     let mut handles = vec![];
     let barrier = Arc::new(Barrier::new(num_threads));
     let barrier1 = Arc::new(Barrier::new(num_threads));
@@ -401,7 +403,7 @@ fn main() {
         });
         handles.push(handle);
     }
-
+    println!("{}", now.elapsed().as_micros());
     // here I think you have to join and determine when to cut the agents off
     for handle in handles {
         handle.join().unwrap();
