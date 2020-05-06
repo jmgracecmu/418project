@@ -403,10 +403,10 @@ fn main() {
         });
         handles.push(handle);
     }
-    println!("{}", now.elapsed().as_micros());
     // here I think you have to join and determine when to cut the agents off
     for handle in handles {
         handle.join().unwrap();
     }
+    println!("{}", now.elapsed().as_micros());
 
 }
