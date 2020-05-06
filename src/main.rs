@@ -216,7 +216,7 @@ fn validate(board: &Board) -> bool {
 }
 
 fn main() {
-    println!("running seq");
+//    println!("running seq");
     let mut num_agents: isize = 0;
     let mut num_threads: usize;
     let args: Vec<String> = env::args().collect();
@@ -240,12 +240,12 @@ fn main() {
         }
         if found_cons == true {
             let i = num_agents as usize;
-            println!("{:?}", &states[i - 1].pos);
+            //println!("{:?}", &states[i - 1].pos);
             break;
         }
     }
-    println!("{}", now.elapsed().as_micros());
+    println!("{},", now.elapsed().as_micros());
     let i = num_agents as usize;
-    if validate(&states[i - 1].pos) {println!("valid");}
-    else {println!("not valid")};
+    if validate(&states[i - 1].pos) {/*println!("valid");}
+    else {println!("not valid");*/}
 }
