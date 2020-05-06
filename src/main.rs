@@ -200,6 +200,18 @@ fn print_board(state: &AgentState, num_agents: isize) {
 
 }
 
+fn validate(board: &Board) -> bool {
+    for i in 0..(board.len() - 1) {
+        for j in (i + 1)..board.len() {
+            let diff = (j - i) as isize;
+            if board[i] == board[j] {return false;}
+            if board[i] - diff == board[j] {return false;}
+            if board[i] + diff == board[j] {return false;}
+        }
+    }
+    true
+}
+
 fn main() {
     println!("running seq");
     let mut num_agents: isize = 0;
@@ -230,4 +242,7 @@ fn main() {
         }
     }
     println!("{}", now.elapsed().as_micros());
+    let i = num_agents as usize;
+    if validate(&states[i - 1].pos) {println!("valid");}
+    else {println!("not valid")};
 }
